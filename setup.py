@@ -10,6 +10,7 @@ scripts = [
     "aqctl_orca_camera=oxart.frontend.aqctl_orca_camera:main",
     "aqctl_scpi_dmm=oxart.frontend.aqctl_scpi_dmm:main",
     "aqctl_scpi_synth=oxart.frontend.aqctl_scpi_synth:main",
+    "aqctl_spinnaker_camera=oxart.frontend.aqctl_spinnaker_camera:main",
     "aqctl_surf_solver=oxart.frontend.aqctl_surf_solver:main",
     "aqctl_thorlabs_tcube=oxart.frontend.aqctl_thorlabs_tcube:main",
     "aqctl_tti_ql355=oxart.frontend.aqctl_tti_ql355:main",
@@ -37,7 +38,7 @@ scripts = [
 ]
 
 setup(
-    name="oxart-devices",
+    name="oxart",
     version="0.2",
     description="ARTIQ/SiPyCo-compatible drivers for laboratory equipment",
     author="Oxford Ion Trap Quantum Computing Group",
