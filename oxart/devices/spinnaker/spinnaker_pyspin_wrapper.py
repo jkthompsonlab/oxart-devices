@@ -121,6 +121,7 @@ class SpinnakerCamera:
         self._thread.start()
 
         self.acquisition_running = False
+        self.current_acquisition_mode = ''
 
 
         self.cam = camera
@@ -158,6 +159,27 @@ class SpinnakerCamera:
             return PySpin.CEnumerationPtr(node).GetValue()
         elif node.GetPrincipalInterfaceType() == PySpin.intfIString:
             return PySpin.CStringPtr(node).GetValue()
+
+    def _get_camera_command(self,command,node_map="normal"):
+        ''' Read out attribute from camera, with checks whether it exists and is readable 
+        node_map: 0: normal node map, 1: TL device nodemap, 2: TL Stream node map '''
+        if node_map == "normal":
+            node_map = self.node_map
+        elif node_map == "device":
+            node_map = self.device_node_map
+        elif node_map == "stream":
+            node_map = self.stream_node_map
+        else:
+            raise Exception("Invalid argument. Node_map can only take values normal, device or stream.")
+        command_node = PySpin.CCommandPtr(node_map.GetNode(command))
+
+        if not PySpin.IsAvailable(command_node):
+            raise Exception("Attribute {} not available...".format(command))
+        if not PySpin.IsWritable(command_node):
+            raise Exception("Attribute {} not writable...".format(command))
+
+        return command_node
+
 
     def _get_camera_attribute_int_value(self,node,value):
         node_of_value = node.GetEntryByName(value)
@@ -217,80 +239,111 @@ class SpinnakerCamera:
             self.cam.DeInit()
             self.cam = None
 
-    def set_trigger_mode(self, trig_mode='continuous'):
+    def _configure_trigger_mode(self, trig_mode='internal'):
         """Set the trigger mode between internal and external"""
-        #self.lib.set_trigger_mode(int(trig_mode))
-        # with lock
+        if trig_mode == 'internal':
+            self._set_camera_attribute('TriggerSource','Software')
+            logger.info('Set trigger mode to internal')
+        elif trig_mode == 'external':
+            self._set_camera_attribute('TriggerSource','Line0')
+            logger.info('Set trigger mode to external')
+        else:
+            raise Exception("Invalid argument {}. Trigger mode can only take values internal or external.".format(trig_mode))
+
+    def _enable_trigger_mode(self):
+        ''' Enable triggered mode of camera '''
+        self._set_camera_attribute('TriggerMode','On')
+
+    def _disable_trigger_mode(self):
+        ''' Disable triggered mode of camera '''
+        self._set_camera_attribute('TriggerMode','Off')
+
+    def execute_internal_trigger(self):
+        ''' Exectue software trigger '''
         with self.lock_camera:
-            if trig_mode == 'continuous':
+            trigger = self._get_camera_command('TriggerSoftware')
+            trigger.Execute()
+
+    def configure_acquistion(self,acquisition_mode='video',n_buffer=20):
+        """ Configure acquistion. In video mode acquisition is repeated as 
+        fast as possible, from when start_acquisition() is called 
+        until stop_acquisition() is called. 
+        In triggered mode, an image is taken every (external/internal) trigger"""
+        with self.lock_camera:        
+            if acquisition_mode == 'video':
+                self._disable_trigger_mode()
+                self._set_camera_attribute('StreamBufferCountMode','Manual',node_map='stream')
+                self._set_camera_attribute('StreamBufferCountManual',n_buffer,node_map='stream') # camera crashes if this buffer is set too low
+                self._set_camera_attribute('StreamBufferHandlingMode','NewestOnly',node_map='stream')
                 self._set_camera_attribute('AcquisitionMode','Continuous')
+                self.current_acquisition_mode = 'video'
+                logger.info('Camera acquisition mode set to video...' )
+            elif acquisition_mode == 'internally_triggered_sequence' or acquisition_mode == 'externally_triggered_sequence':
+                self._disable_trigger_mode() # trigger mode needs to be disabled when it is changed
+                self._set_camera_attribute('StreamBufferCountMode','Auto',node_map='stream')
+                self._set_camera_attribute('StreamBufferHandlingMode','OldestFirst',node_map='stream')
+                self.current_acquisition_mode = 'triggered'
+                if n_buffer == 1:
+                    self._set_camera_attribute('AcquisitionMode','SingleFrame')
+                else:
+                    self._set_camera_attribute('AcquisitionMode','MultiFrame')
+                    self._set_camera_attribute('AcquisitionFrameCount','n_buffer')
+                if acquisition_mode == 'internally_triggered_sequence':
+                    self._configure_trigger_mode(trig_mode='internal')
+                    logger.info('Camera acquisition mode set to internally triggered sequence of length {}.'.format(n_buffer))
+                else:
+                    self._configure_trigger_mode(trig_mode='external')
+                    logger.info('Camera acquisition mode set to externally triggered sequence of length {}.'.format(n_buffer) )
+                self._enable_trigger_mode()
+            else:
+                raise Exception('Invalid acquistion mode {}. Can only take values video, internally_triggered_sequence or externally_triggered_sequence ')
 
-    def set_image_region(self, hStart, hEnd, vStart, vEnd, hBin=1, vBin=1):
-        """Set the CCD region to read out and the horizontal and vertical
-        binning.
-        The region is 0 indexed and inclusive, so the valid ranges for hStart
-        is 0..self.ccdWidth-1 etc."""
-        self.roiWidth = int((1+hEnd-hStart) / hBin)
-        self.roiHeight = int((1+vEnd-vStart) / vBin)
-
-        # with self.lock_camera():
-        #     self.lib.set_read_mode(READMODE_IMAGE)
-        #     self.lib.set_image(int(hBin), int(vBin),  1+int(hStart),
-        #                                               1+int(hEnd),
-        #                                               1+int(vStart),
-        #                                               1+int(vEnd))
 
 
-    def set_exposure_time(self, time):
+
+    def set_image_region(self, x, y, width, height):
+        """Set the CCD region to read out """
+        with self.lock_camera:
+            self._set_camera_attribute('Width',width)
+            self._set_camera_attribute('Height',height)
+            self._set_camera_attribute('OffsetX',x)
+            self._set_camera_attribute('OffsetY',y)
+        logger.info('Set camera {} roi to x:{}, y:{}, width:{}, height:{}'.format(self.serial_nr,x,y,width,height))
+
+
+    def set_exposure_time(self, exposure_time):
         """Set the CCD exposure time in seconds"""
-        #self.lib.set_exposure_time(float(time))
-        pass
+        with self.lock_camera:
+            if self.cam.ExposureAuto.GetAccessMode != PySpin.RW:
+                raise Exception('Unable to disable automatic exposure. Aborting...')
+            self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+            if self.cam.ExposureTime.GetAccessMode() != PySpin.RW:
+                raise Exception('Unable to set exposure time. Aborting... ')
+            exposure_time_to_set = min(self.cam.ExposureTime.GetMax(), exposure_time)
+            self.cam.ExposureTime.SetValue(exposure_time_to_set)
+        info.logger('Set exposure time to {}s'.format(exposure_time_to_set))
 
-    def get_acquisition_timings(self):
-        """Returns the actual timings the camera will use, after quantisation
-        and padding as needed by the camera hardware.
-        The timings are returned as a tuple (exposureTime, minCycleTime,
-        minKineticTime)"""
-        # exposure = c_float()
-        # accumulate = c_float()
-        # kinetic = c_float()
-        # with self.lock_camera():
-        #     ret = self.lib.get_acquisition_timings( ctypes.byref(exposure),
-        #                                           ctypes.byref(accumulate),
-        #                                           ctypes.byref(kinetic))
-        #     return (exposure.value, accumulate.value, kinetic.value)
-        pass
+    def start_acquisition(self):
+        """ Start a single or repeated acquisition, depending on how it was set up
+        in configure_acquisition """
+        with self.lock_camera:
+            self.cam.BeginAcquisition()
 
-    def start_acquisition(self, single=False):
+
+    def start_video(self):
         """Start a single or repeated acquisition. If single=False the
         acquisition is repeated as fast as possible, (or on every trigger, if
         in 'external trigger' mode) until stop_acquisition() is called."""
-
-        # if single:
-        #     mode = ACQUISITION_SINGLE
-        # else:
-        #     mode = ACQUISITION_RUN_TILL_ABORT
-
-        # with self.lock_camera():
-        #     self.lib.set_acquisition_mode(mode)
-        #     self.lib.start_acquisition()
-
         
         if self.acquisition_running:
             logger.info("Acquisition already in progress.")
             return
 
         logger.info("Starting acquisition.")
-        with self.lock_camera:
-            self._set_camera_attribute('StreamBufferCountMode','Manual',node_map="stream")
-            self._set_camera_attribute('StreamBufferCountManual',15,node_map="stream")
-            self._set_camera_attribute('StreamBufferHandlingMode','NewestFirst',node_map="stream")
-            self._set_camera_attribute('AcquisitionMode','Continuous')
-        logger.info('Camera acquisition mode set to continuous...' )
-
+        self.configure_acquistion(acquisition_mode='video',n_buffer=20)
+        self.start_acquisition()
         self.acquisition_running = True
-        with self.lock_camera:
-            self.cam.BeginAcquisition()
+
 
     def stop_acquisition(self):
         """Stop a repeated acquisition"""
@@ -300,16 +353,7 @@ class SpinnakerCamera:
         self.acquisition_running = False
         with self.lock_camera:
             self.cam.EndAcquisition()
-        # with self.lock_camera():
-        #     self.lib.abort_acquisition()
         logger.info("Stopped acquisition.")
-
-    def _wait_for_acquisition(self):
-        """Wait for a new image to become available"""
-        # with self.lock_camera():
-        #     self.lib.wait_for_acquisition()
-        pass
-
 
     def _grab_image(self):
         """Returns next image in the camera buffer as a numpy
@@ -331,17 +375,17 @@ class SpinnakerCamera:
                     logger.info('Missed an image, exception occured: \n {}'.format(e))
                     img_array = None
                     restart_camera = True
-                    #time.sleep(1)
-                    #self.stop_acquisition()
-                    #self.start_acquisition()
             else:
                 logger.info('Camera not streaming.')
                 img_array = None
-        #logger.info(np.shape(image.GetNDArray()))
+        #logger.info(np.shape(img_array))
         if restart_camera:
-            logger.info('Restarting camera acquistion...')
-            self.stop_acquisition()
-            self.start_acquisition()
+            if self.current_acquisition_mode != 'video':
+                raise Exception('Exception occurred in triggered mode')
+            else:
+                logger.info('Restarting camera acquistion...')
+                self.stop_acquisition()
+                self.start_video()
         return img_array
 
 
@@ -357,7 +401,7 @@ class SpinnakerCamera:
     def _acquisition_thread(self):
         while True:
             # sleep() release the GIL, hence we have true multi-threading here
-            time.sleep(50e-3)
+            time.sleep(100e-3)
             if self._stopping.is_set():
                 break
             #logger.info(self.acquisition_running)
@@ -367,9 +411,11 @@ class SpinnakerCamera:
                 im = None
             if im is None:
                 continue
-            self.frame_buffer.append(im)
-            for f in self._frame_call_list:
-                f(im)
+            else:
+                logger.info('{}: send image'.format(self.serial_nr))
+                self.frame_buffer.append(im)
+                for f in self._frame_call_list:
+                    f(im)
 
     def get_image(self):
         """Returns the oldest image in the buffer as a numpy array, or None if
@@ -404,16 +450,5 @@ class SpinnakerCamera:
             ims = None
         return ims
 
-#%%
 
-# my_cam = SpinnakerCamera()
-# my_cam.set_trigger_mode()
-# my_cam.start_acquisition()
-# print('Here!')
-# img = my_cam.get_image()
-# print(img)
-# plt.imshow(img)
-# time.sleep(1)
-# #my_cam.stop_acquisition()
-# print('Done!')
 
