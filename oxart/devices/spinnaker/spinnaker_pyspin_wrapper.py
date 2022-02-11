@@ -264,7 +264,7 @@ class SpinnakerCamera:
             trigger = self._get_camera_command('TriggerSoftware')
             trigger.Execute()
 
-    def configure_acquistion(self,acquisition_mode='video',n_buffer=20):
+    def configure_acquistion(self,acquisition_mode='video',n_buffer=20,n_images_multiframe=1):
         """ Configure acquistion. In video mode acquisition is repeated as 
         fast as possible, from when start_acquisition() is called 
         until stop_acquisition() is called. 
@@ -280,23 +280,36 @@ class SpinnakerCamera:
                 logger.info('Camera acquisition mode set to video...' )
             elif acquisition_mode == 'internally_triggered_sequence' or acquisition_mode == 'externally_triggered_sequence':
                 self._disable_trigger_mode() # trigger mode needs to be disabled when it is changed
+                self._set_camera_attribute('StreamBufferCountMode','Manual',node_map='stream')
+                self._set_camera_attribute('StreamBufferCountManual',n_buffer,node_map='stream') # camera crashes if this buffer is set too low
+                self._set_camera_attribute('StreamBufferHandlingMode','OldestFirst',node_map='stream')
+                self._set_camera_attribute('TriggerSelector','FrameStart')
+                self.current_acquisition_mode = 'triggered'
+                self._set_camera_attribute('AcquisitionMode','Continuous')
+                if acquisition_mode == 'internally_triggered_sequence':
+                    self._configure_trigger_mode(trig_mode='internal')
+                    logger.info('Camera acquisition mode set to internally triggered sequence.')
+                else:
+                    self._configure_trigger_mode(trig_mode='external')
+                    logger.info('Camera acquisition mode set to externally triggered sequence.')
+                self._enable_trigger_mode()
+            elif acquisition_mode == 'internally_triggered_multiframe' or acquisition_mode == 'externally_triggered_multiframe':
+                self._disable_trigger_mode() # trigger mode needs to be disabled when it is changed
                 self._set_camera_attribute('StreamBufferCountMode','Auto',node_map='stream')
                 self._set_camera_attribute('StreamBufferHandlingMode','OldestFirst',node_map='stream')
                 self.current_acquisition_mode = 'triggered'
-                if n_buffer == 1:
-                    self._set_camera_attribute('AcquisitionMode','SingleFrame')
-                else:
-                    self._set_camera_attribute('AcquisitionMode','MultiFrame')
-                    self._set_camera_attribute('AcquisitionFrameCount','n_buffer')
+                self._set_camera_attribute('AcquisitionMode','MultiFrame')
+                self._set_camera_attribute('AcquisitionFrameCount',n_images_multiframe)
                 if acquisition_mode == 'internally_triggered_sequence':
                     self._configure_trigger_mode(trig_mode='internal')
-                    logger.info('Camera acquisition mode set to internally triggered sequence of length {}.'.format(n_buffer))
+                    logger.info('Camera acquisition mode set to internally triggered sequence of length {}.'.format(n_images_multiframe))
                 else:
                     self._configure_trigger_mode(trig_mode='external')
-                    logger.info('Camera acquisition mode set to externally triggered sequence of length {}.'.format(n_buffer) )
+                    logger.info('Camera acquisition mode set to externally triggered sequence of length {}.'.format(n_images_multiframe) )
                 self._enable_trigger_mode()
             else:
-                raise Exception('Invalid acquistion mode {}. Can only take values video, internally_triggered_sequence or externally_triggered_sequence ')
+                raise Exception('Invalid acquistion mode {}. Can only take values video, internally_triggered_sequence, \
+                    externally_triggered_sequence, internally_triggered_multiframe or externally_triggered_multiframe ')
 
 
 
@@ -326,8 +339,11 @@ class SpinnakerCamera:
     def start_acquisition(self):
         """ Start a single or repeated acquisition, depending on how it was set up
         in configure_acquisition """
+        logger.info("Starting acquisition.")
         with self.lock_camera:
             self.cam.BeginAcquisition()
+        self.acquisition_running = True
+
 
 
     def start_video(self):
@@ -339,10 +355,9 @@ class SpinnakerCamera:
             logger.info("Acquisition already in progress.")
             return
 
-        logger.info("Starting acquisition.")
         self.configure_acquistion(acquisition_mode='video',n_buffer=20)
         self.start_acquisition()
-        self.acquisition_running = True
+        
 
 
     def stop_acquisition(self):
