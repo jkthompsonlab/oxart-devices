@@ -121,6 +121,7 @@ class SpinnakerCamera:
         self._thread.start()
 
         self.acquisition_running = False
+        self.video_running = False
         self.current_acquisition_mode = ''
 
 
@@ -325,16 +326,26 @@ class SpinnakerCamera:
 
 
     def set_exposure_time(self, exposure_time):
-        """Set the CCD exposure time in seconds"""
+        """Set the CCD exposure time in microseconds"""
         with self.lock_camera:
-            if self.cam.ExposureAuto.GetAccessMode != PySpin.RW:
+            if self.cam.ExposureAuto.GetAccessMode() != PySpin.RW:
                 raise Exception('Unable to disable automatic exposure. Aborting...')
             self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
             if self.cam.ExposureTime.GetAccessMode() != PySpin.RW:
                 raise Exception('Unable to set exposure time. Aborting... ')
             exposure_time_to_set = min(self.cam.ExposureTime.GetMax(), exposure_time)
             self.cam.ExposureTime.SetValue(exposure_time_to_set)
-        info.logger('Set exposure time to {}s'.format(exposure_time_to_set))
+        logger.info('Set exposure time to {:.2f}us'.format(exposure_time_to_set))
+
+    def set_automatic_exposure_time(self):
+        """Set the CCD exposure time to automatic"""
+        with self.lock_camera:
+            if self.cam.ExposureAuto.GetAccessMode() != PySpin.RW:
+                raise Exception('Unable to disable automatic exposure. Aborting...')
+            self.cam.ExposureAuto.SetValue(PySpin.ExposureAuto_Continuous)
+        logger.info('Set exposure time to automatic')
+
+
 
     def start_acquisition(self):
         """ Start a single or repeated acquisition, depending on how it was set up
@@ -343,6 +354,9 @@ class SpinnakerCamera:
         with self.lock_camera:
             self.cam.BeginAcquisition()
         self.acquisition_running = True
+
+    def video_is_running(self):
+        return self.video_running
 
 
 
@@ -354,7 +368,8 @@ class SpinnakerCamera:
         if self.acquisition_running:
             logger.info("Acquisition already in progress.")
             return
-
+        self.video_running = True
+        #self.set_automatic_exposure_time()
         self.configure_acquistion(acquisition_mode='video',n_buffer=20)
         self.start_acquisition()
         
@@ -366,6 +381,7 @@ class SpinnakerCamera:
             logger.info("Acquisition was not running.")
             return
         self.acquisition_running = False
+        self.video_running = False
         with self.lock_camera:
             self.cam.EndAcquisition()
         logger.info("Stopped acquisition.")
@@ -416,18 +432,18 @@ class SpinnakerCamera:
     def _acquisition_thread(self):
         while True:
             # sleep() release the GIL, hence we have true multi-threading here
-            time.sleep(100e-3)
+            time.sleep(5e-3)
             if self._stopping.is_set():
                 break
             #logger.info(self.acquisition_running)
-            if self.acquisition_running:
+            if self.video_running:
                 im = self._grab_image()
             else:
                 im = None
             if im is None:
                 continue
             else:
-                logger.info('{}: send image'.format(self.serial_nr))
+                #logger.info('{}: send image'.format(self.serial_nr))
                 self.frame_buffer.append(im)
                 for f in self._frame_call_list:
                     f(im)
@@ -442,11 +458,12 @@ class SpinnakerCamera:
     def wait_for_image(self):
         """Returns the oldest image in the buffer as a numpy array, blocking until there
         is an image available"""
+        logger.info(',')
         while True:
-            im = self.get_image()
+            im = self._grab_image()
             if im is not None:
                 break
-            time.sleep(10e-3)
+            time.sleep(5e-3)
         return im
 
     def flush_images(self):
