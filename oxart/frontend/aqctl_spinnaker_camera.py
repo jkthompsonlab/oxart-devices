@@ -59,9 +59,9 @@ def main():
                 # We send a multi-part message with first part the serial number
                 # this allows the subscriber to filter out unwanted images
                 socket.send_string(str(sn), flags=zmq.SNDMORE)
-                print(str(sn))
+                #print(str(sn))
                 socket.send_pyobj(im)
-                print(np.shape(im))
+                #print(np.shape(im))
             logger.info("Broadcasting images for camera {}".format(sn))
             cam.register_callback(frame_callback)
 
