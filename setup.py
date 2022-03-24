@@ -10,6 +10,7 @@ scripts = [
     "aqctl_orca_camera=oxart.frontend.aqctl_orca_camera:main",
     "aqctl_scpi_dmm=oxart.frontend.aqctl_scpi_dmm:main",
     "aqctl_scpi_synth=oxart.frontend.aqctl_scpi_synth:main",
+    "aqctl_srs_sg380=oxart.frontend.aqctl_srs_sg380:main",
     "aqctl_spinnaker_camera=oxart.frontend.aqctl_spinnaker_camera:main",
     "aqctl_surf_solver=oxart.frontend.aqctl_surf_solver:main",
     "aqctl_thorlabs_tcube=oxart.frontend.aqctl_thorlabs_tcube:main",
