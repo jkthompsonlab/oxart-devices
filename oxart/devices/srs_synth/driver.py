@@ -55,6 +55,15 @@ class SRSSynth:
         # returns amplitude in units of Vpp
         return self.query("AMPR? VPP")
 
+    def set_freq(self,freq):
+        return self.send("FREQ {}".format(freq))
+
+    def set_phase(self,phase):
+        return self.send("PHAS {}".format(phase))
+
+    def set_amplitude(self,amplitude):
+        # sets amplitude in units of Vpp
+        return self.send("AMPR {} VPP".format(amplitude))
 
 
 
