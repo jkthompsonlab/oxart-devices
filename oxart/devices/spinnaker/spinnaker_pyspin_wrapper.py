@@ -382,7 +382,6 @@ class SpinnakerCamera:
             return
         with self.lock_camera:
             self.cam.EndAcquisition()
-        im = self._grab_image()
         self.acquisition_running = False
         self.video_running = False
         logger.info("Stopped acquisition.")
