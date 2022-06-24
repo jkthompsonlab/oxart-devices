@@ -46,7 +46,7 @@ class SRSSynth:
         return True
 
     def get_freq(self):
-        res = self.query("FREQ?MHz")
+        res = self.query("FREQ?")
         return float(res)
 
     def get_phase(self):
