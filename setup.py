@@ -8,6 +8,7 @@ scripts = [
     "aqctl_current_stabilizer=oxart.frontend.aqctl_current_stabilizer:main",
     "aqctl_lakeshore_335=oxart.frontend.aqctl_lakeshore_335:main",
     "aqctl_orca_camera=oxart.frontend.aqctl_orca_camera:main",
+    "aqctl_picoscope=oxart.frontend.aqctl_picoscope:main",
     "aqctl_scpi_dmm=oxart.frontend.aqctl_scpi_dmm:main",
     "aqctl_scpi_synth=oxart.frontend.aqctl_scpi_synth:main",
     "aqctl_signalhound=oxart.frontend.aqctl_signalhound:main",
