@@ -82,7 +82,7 @@ class Signalhound:
     def configure_amplitude(self,ref_level="22.361MV"):
         self.inst.write(f"SENS:POW:RF:RLEV {ref_level}")
 
-    def configure_sweep(self,resolution="10kHz",span="2MHz",centre="6.3MHz"):
+    def configure_sweep(self,resolution="10kHz",span="8MHz",centre="6.6MHz"):
         self.switch_continuous_mode(on=False)
         self.configure_bandwidth(resolution=resolution,video="AUTO ON",shape="GAUSSIAN")
         self.configure_span(span=span,centre=centre)
