@@ -67,7 +67,6 @@ class PicoScope:
         coupling_type = ps.PS5000A_COUPLING[f"PS5000A_{coupling}"]
         enabled = 1
         self.ch_range[channel] = ps.PS5000A_RANGE[f"PS5000A_{v_range}"]
-        print(self.ch_range)
         # analogue offset = 0 V
         analogue_offset = 0
         self.status["setCh"] = ps.ps5000aSetChannel(self.chandle, channel_obj, enabled, coupling_type, self.ch_range[channel], analogue_offset)
@@ -172,7 +171,7 @@ class PicoScope:
         # Create time data
         time = np.linspace(0, (cmaxSamples.value - 1) * self.timeIntervalns.value, cmaxSamples.value)
 
-        return time, adc2mVChMax
+        return time, np.array(adc2mVChMax)
 
     def close(self):
         # Stop the scope
