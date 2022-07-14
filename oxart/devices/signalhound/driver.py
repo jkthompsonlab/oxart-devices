@@ -89,6 +89,38 @@ class Signalhound:
         self.configure_amplitude(ref_level="22.361MV")
         self.configure_trace()
 
+    def configure_zero_span_settings(self,ref_level=-20.0, centre_freq=6.3e6, bandwidth=1.5*1e6, 
+            sample_rate=61.440e6, sweep_time=1e-3):
+        self.inst.write("INSTRUMENT:SELECT ZS") # Set the measurement mode to Zero-Span
+        self.inst.write("INIT:CONT OFF") # Disable continuous meausurement operation and wait for any active measurements to finish.
+        self.inst.write(f"SENSE:ZS:CAPTURE:RLEVEL {ref_level:.2f}DBM")
+        self.inst.write(f"SENSE:ZS:CAPTURE:SRATE {sample_rate/1e6:.3f}MHZ")
+        self.inst.write(f"SENSE:ZS:CAPTURE:CENTER {centre_freq/1e6:.2f}MHZ")
+        self.inst.write("SENSE:ZS:CAPTURE:IFBW:AUTO OFF")
+        self.inst.write(f"SENSE:ZS:CAPTURE:IFBW {bandwidth/1e6:.2f}MHZ")
+        self.inst.write(f"SENSE:ZS:CAPTURE:SWEEP:TIME {sweep_time:.6f}") # in s
+
+    def configure_external_trigger(self):
+        self.inst.write("TRIG:ZS:SOURCE EXT")
+        self.inst.write("TRIG:ZS:SLOPE POS")
+        self.inst.write("TRIG:ZS:POS 0.0")
+
+    def configure_zero_span(self, ref_level=-20.0, centre_freq=6.3e6, bandwidth=1.5*1e6, 
+            sample_rate=61.440e6, sweep_time=1e-3):
+        self.configure_zero_span_settings(ref_level=ref_level, centre_freq=centre_freq, 
+            bandwidth=bandwidth, sample_rate=sample_rate, sweep_time=sweep_time)
+        self.configure_external_trigger()
+        # wait for trigger
+        self.inst.write(":INIT") 
+               
+
+
+    def collect_zero_sweep_data(self):
+        # wait for sweep to complete
+        self.inst.query("*OPC?") 
+        data = self.inst.query("FETCh:ZS? 1")    
+        print(self.inst.query("ZS:CAP:SWEEP:TIME?"))
+        return data
 
     def configure_trace(self):
         # Configure the trace. Ensures trace 1 is active and enabled for clear-and-write.

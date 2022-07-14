@@ -3,7 +3,8 @@
 import argparse
 import logging
 
-from oxart.devices.signalhound.api_driver import Signalhound
+# from oxart.devices.signalhound.api_driver import Signalhound
+from oxart.devices.signalhound.driver import Signalhound
 from sipyco.pc_rpc import simple_server_loop
 import sipyco.common_args as sca
 

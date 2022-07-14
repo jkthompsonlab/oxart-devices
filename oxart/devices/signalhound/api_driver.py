@@ -40,7 +40,7 @@ class Signalhound:
         sm_set_IQ_data_type(self.handle, SM_DATA_TYPE_32_FC)
         sm_set_IQ_center_freq(self.handle, centre_freq)
         sm_set_IQ_bandwidth(self.handle, SM_TRUE, span)
-        sm_set_IQ_sample_rate(self.handle, 1) #TODO
+        sm_set_IQ_sample_rate(self.handle, 64) #TODO
         # Setup an rising edge external trigger
         sm_set_seg_IQ_ext_trigger(self.handle, SM_TRIGGER_EDGE_RISING)
         # Setup a single segment capture where the external trigger position
@@ -61,6 +61,7 @@ class Signalhound:
         sm_seg_IQ_capture_wait(self.handle, 0)
         # Did the capture timeout?
         timed_out = sm_seg_IQ_capture_timeout(self.handle, 0, 0)["timed_out"]
+        print("Timed out? ",timed_out)
         # Read the timestamp
         ns_since_epoch = sm_seg_IQ_capture_time(self.handle, 0, 0)["ns_since_epoch"]
         # Read the I/Q data
